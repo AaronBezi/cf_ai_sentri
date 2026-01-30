@@ -1,0 +1,27 @@
+{
+  "name": "cf_ai_sentri",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AaronBezi/cf_ai_sentri.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/AaronBezi/cf_ai_sentri/issues"
+  },
+  "homepage": "https://github.com/AaronBezi/cf_ai_sentri#readme",
+  "devDependencies": {
+    "wrangler": "^4.61.1"
+  },
+  "dependencies": {
+    "@cloudflare/ai": "^1.2.2",
+    "hono": "^4.11.7"
+  }
+}

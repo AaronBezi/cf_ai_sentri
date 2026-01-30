@@ -1,0 +1,15 @@
+name = "cf-ai-vulnerability-scanner"
+main = "src/worker.js"
+compatibility_date = "2024-01-01"
+
+[ai]
+binding = "AI"
+
+[[durable_objects.bindings]]
+name = "CODEBASE_MEMORY"
+class_name = "CodebaseMemory"
+script_name = "cf-ai-vulnerability-scanner"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["CodebaseMemory"]
