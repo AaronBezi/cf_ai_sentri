@@ -7,6 +7,7 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { detectSQLInjection } from './agents/sql-injection-agent.js';
 
 // Initialize Hono app
 const app = new Hono();
@@ -64,56 +65,21 @@ function detectLanguage(filename) {
 }
 
 /**
- * Generates mock vulnerability results for testing
- * In production, this will be replaced with actual AI analysis
- * @param {string} filename - The name of the scanned file
- * @param {string} code - The code content
- * @param {string} language - The detected programming language
- * @returns {Array} - Array of mock vulnerability findings
+ * Transforms AI agent results to frontend-compatible format
+ * @param {Array} agentResults - Results from AI agents
+ * @returns {Array} - Formatted vulnerability array for frontend
  */
-function generateMockVulnerabilities(filename, code, language) {
-  const lines = code.split('\n');
-  const vulnerabilities = [];
-
-  // Mock SQL Injection detection
-  vulnerabilities.push({
-    type: 'SQL Injection',
-    severity: 'HIGH',
-    line: Math.min(10, lines.length),
-    code_snippet: lines[Math.min(9, lines.length - 1)] || 'N/A',
-    message: 'Potential SQL injection vulnerability detected',
-    explanation: 'User input may be directly concatenated into SQL query',
-    fix_suggestion: 'Use parameterized queries instead of string concatenation',
-    confidence: 0.85,
-  });
-
-  // Mock XSS detection
-  if (language === 'javascript' || language === 'typescript') {
-    vulnerabilities.push({
-      type: 'Cross-Site Scripting (XSS)',
-      severity: 'MEDIUM',
-      line: Math.min(15, lines.length),
-      code_snippet: lines[Math.min(14, lines.length - 1)] || 'N/A',
-      message: 'Potential XSS vulnerability detected',
-      explanation: 'User input may be rendered without proper sanitization',
-      fix_suggestion: 'Use proper output encoding or a sanitization library',
-      confidence: 0.75,
-    });
-  }
-
-  // Mock hardcoded credentials detection
-  vulnerabilities.push({
-    type: 'Hard-coded Credentials',
-    severity: 'CRITICAL',
-    line: Math.min(5, lines.length),
-    code_snippet: lines[Math.min(4, lines.length - 1)] || 'N/A',
-    message: 'Potential hard-coded credentials detected',
-    explanation: 'Sensitive credentials appear to be stored in source code',
-    fix_suggestion: 'Use environment variables or a secrets manager',
-    confidence: 0.90,
-  });
-
-  return vulnerabilities;
+function formatVulnerabilitiesForFrontend(agentResults) {
+  return agentResults.map((vuln) => ({
+    type: vuln.vulnerability_type || 'Unknown',
+    severity: vuln.severity || 'MEDIUM',
+    line: vuln.line_number || 0,
+    code_snippet: vuln.code_snippet || '',
+    message: vuln.explanation ? vuln.explanation.substring(0, 100) : 'Vulnerability detected',
+    explanation: vuln.explanation || '',
+    fix_suggestion: vuln.fix_suggestion || '',
+    confidence: vuln.confidence || 0.5,
+  }));
 }
 
 // =============================================================================
@@ -465,10 +431,13 @@ app.get('/api/health', (c) => {
 
 /**
  * POST /api/scan - File upload and scanning endpoint
- * Accepts code files and returns vulnerability analysis
+ * Accepts code files and returns vulnerability analysis using AI
  */
 app.post('/api/scan', async (c) => {
   try {
+    // Get environment bindings from context
+    const { env } = c.env;
+
     // Parse the multipart form data
     const formData = await c.req.formData();
     const file = formData.get('file');
@@ -505,8 +474,16 @@ app.post('/api/scan', async (c) => {
     const code = await file.text();
     const language = detectLanguage(file.name);
 
-    // Generate mock vulnerabilities (will be replaced with AI analysis)
-    const vulnerabilities = generateMockVulnerabilities(file.name, code, language);
+    // Run SQL injection detection using Workers AI
+    const sqlInjectionResults = await detectSQLInjection(
+      code,
+      file.name,
+      language,
+      env.AI
+    );
+
+    // Format vulnerabilities for frontend display
+    const vulnerabilities = formatVulnerabilitiesForFrontend(sqlInjectionResults);
 
     // Return scan results
     return c.json({
