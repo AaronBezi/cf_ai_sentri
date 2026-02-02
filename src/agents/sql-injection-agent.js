@@ -406,16 +406,44 @@ export async function detectSQLInjection(code, filename, language, ai) {
     if (typeof response === 'string') {
       responseText = response;
     } else if (response) {
-      // Try common response paths
-      responseText =
-        response.response ||
-        response.result ||
-        response.content ||
-        response.text ||
-        response.output ||
-        response.generated_text ||
-        (response.choices && response.choices[0]?.message?.content) ||
-        (response.choices && response.choices[0]?.text);
+      // Try common response paths - ensure we get a string
+      const candidates = [
+        response.response,
+        response.result,
+        response.content,
+        response.text,
+        response.output,
+        response.generated_text,
+        response.choices?.[0]?.message?.content,
+        response.choices?.[0]?.text,
+      ];
+
+      for (const candidate of candidates) {
+        if (typeof candidate === 'string') {
+          responseText = candidate;
+          break;
+        } else if (candidate && typeof candidate === 'object') {
+          // Handle nested response objects
+          const nested = candidate.response || candidate.text || candidate.content;
+          if (typeof nested === 'string') {
+            responseText = nested;
+            break;
+          }
+        }
+      }
+
+      // Last resort: stringify the response object if it has useful content
+      if (!responseText && response.response && typeof response.response === 'object') {
+        console.log('[SQL Agent] Response.response is an object, checking for nested text...');
+        console.log('[SQL Agent] response.response keys:', Object.keys(response.response));
+        // Try to find any string property
+        for (const key of Object.keys(response.response)) {
+          if (typeof response.response[key] === 'string' && response.response[key].includes('[')) {
+            responseText = response.response[key];
+            break;
+          }
+        }
+      }
     }
 
     console.log('[SQL Agent] Extracted response text type:', typeof responseText);
@@ -423,8 +451,17 @@ export async function detectSQLInjection(code, filename, language, ai) {
 
     if (!responseText) {
       console.error('[SQL Agent] Could not extract response text from AI response');
-      console.error('[SQL Agent] Full response object:', JSON.stringify(response, null, 2).substring(0, 1000));
-      return [];
+      console.error('[SQL Agent] Full response object:', JSON.stringify(response, null, 2).substring(0, 2000));
+
+      // Try one more fallback - stringify and look for JSON array pattern
+      const fullStr = JSON.stringify(response);
+      const jsonMatch = fullStr.match(/\[.*"vulnerability_type".*\]/s);
+      if (jsonMatch) {
+        console.log('[SQL Agent] Found JSON pattern in stringified response, attempting parse...');
+        responseText = jsonMatch[0];
+      } else {
+        return [];
+      }
     }
 
     // Parse and validate the response

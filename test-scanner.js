@@ -150,7 +150,8 @@ async function checkServer() {
 async function runAllTests() {
   console.log(`${colors.bright}${colors.cyan}`);
   console.log('╔══════════════════════════════════════════════════════════════════╗');
-  console.log('║           SQL Injection Scanner - Test Suite                     ║');
+  console.log('║        AI Vulnerability Scanner - Test Suite                     ║');
+  console.log('║        (SQL Injection + XSS Detection)                           ║');
   console.log('╚══════════════════════════════════════════════════════════════════╝');
   console.log(`${colors.reset}`);
 
@@ -169,20 +170,43 @@ async function runAllTests() {
 
   // Test files and expected results
   const testCases = [
+    // SQL Injection tests
     {
       file: 'vulnerable-sql.py',
       description: 'Python SQL injection vulnerabilities',
       expectedVulnerabilities: 4,
+      type: 'SQL Injection',
     },
     {
       file: 'vulnerable-sql.js',
       description: 'JavaScript SQL injection vulnerabilities',
       expectedVulnerabilities: 3,
+      type: 'SQL Injection',
     },
     {
       file: 'safe-sql.py',
       description: 'Safe Python code with parameterized queries',
       expectedVulnerabilities: 0,
+      type: 'SQL Injection',
+    },
+    // XSS tests
+    {
+      file: 'vulnerable-xss.js',
+      description: 'JavaScript XSS vulnerabilities',
+      expectedVulnerabilities: 8,
+      type: 'XSS',
+    },
+    {
+      file: 'vulnerable-xss.py',
+      description: 'Python/Flask XSS vulnerabilities',
+      expectedVulnerabilities: 6,
+      type: 'XSS',
+    },
+    {
+      file: 'safe-xss.js',
+      description: 'Safe JavaScript code with proper escaping',
+      expectedVulnerabilities: 0,
+      type: 'XSS',
     },
   ];
 

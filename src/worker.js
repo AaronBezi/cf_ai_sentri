@@ -8,6 +8,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { detectSQLInjection } from './agents/sql-injection-agent.js';
+import { detectXSS } from './agents/xss-agent.js';
 
 // Initialize Hono app
 const app = new Hono();
@@ -522,16 +523,27 @@ app.post('/api/scan', async (c) => {
     const code = await file.text();
     const language = detectLanguage(file.name);
 
-    // Run SQL injection detection using Workers AI
-    const sqlInjectionResults = await detectSQLInjection(
-      code,
-      file.name,
-      language,
-      env.AI
-    );
+    // Run both vulnerability detection agents in parallel
+    console.log('[Scan] Running SQL Injection and XSS detection in parallel...');
+    const [sqlInjectionResults, xssResults] = await Promise.all([
+      detectSQLInjection(code, file.name, language, env.AI),
+      detectXSS(code, file.name, language, env.AI),
+    ]);
+
+    // Combine results from all agents
+    const allResults = [...sqlInjectionResults, ...xssResults];
 
     // Format vulnerabilities for frontend display
-    const vulnerabilities = formatVulnerabilitiesForFrontend(sqlInjectionResults);
+    const vulnerabilities = formatVulnerabilitiesForFrontend(allResults);
+
+    // Sort by line number
+    vulnerabilities.sort((a, b) => a.line - b.line);
+
+    // Count by vulnerability type
+    const sqlCount = vulnerabilities.filter((v) => v.type.includes('SQL')).length;
+    const xssCount = vulnerabilities.filter((v) => v.type.includes('XSS')).length;
+
+    console.log(`[Scan] Total vulnerabilities: ${vulnerabilities.length} (SQL: ${sqlCount}, XSS: ${xssCount})`);
 
     // Return scan results
     return c.json({
@@ -543,10 +555,16 @@ app.post('/api/scan', async (c) => {
       vulnerabilities: vulnerabilities,
       summary: {
         total: vulnerabilities.length,
-        critical: vulnerabilities.filter((v) => v.severity === 'CRITICAL').length,
-        high: vulnerabilities.filter((v) => v.severity === 'HIGH').length,
-        medium: vulnerabilities.filter((v) => v.severity === 'MEDIUM').length,
-        low: vulnerabilities.filter((v) => v.severity === 'LOW').length,
+        by_type: {
+          sql_injection: sqlCount,
+          xss: xssCount,
+        },
+        by_severity: {
+          critical: vulnerabilities.filter((v) => v.severity === 'CRITICAL').length,
+          high: vulnerabilities.filter((v) => v.severity === 'HIGH').length,
+          medium: vulnerabilities.filter((v) => v.severity === 'MEDIUM').length,
+          low: vulnerabilities.filter((v) => v.severity === 'LOW').length,
+        },
       },
     });
   } catch (error) {
