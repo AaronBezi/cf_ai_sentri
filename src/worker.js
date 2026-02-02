@@ -430,6 +430,48 @@ app.get('/api/health', (c) => {
 });
 
 /**
+ * POST /api/debug-scan - Debug endpoint to see raw AI responses
+ * Use this to troubleshoot scanning issues
+ */
+app.post('/api/debug-scan', async (c) => {
+  try {
+    const { env } = c.env;
+
+    // Debug environment
+    console.log('[Debug] c.env keys:', Object.keys(c.env));
+    console.log('[Debug] env exists:', !!env);
+    console.log('[Debug] env keys:', env ? Object.keys(env) : 'null');
+    console.log('[Debug] env.AI exists:', !!env?.AI);
+
+    const formData = await c.req.formData();
+    const file = formData.get('file');
+
+    if (!file) {
+      return c.json({ error: 'No file uploaded' }, 400);
+    }
+
+    const content = await file.text();
+    const language = detectLanguage(file.name);
+
+    return c.json({
+      debug: true,
+      filename: file.name,
+      language: language,
+      content_length: content.length,
+      content_preview: content.substring(0, 500),
+      env_keys: env ? Object.keys(env) : [],
+      ai_binding_exists: !!env?.AI,
+      c_env_keys: Object.keys(c.env),
+    });
+  } catch (error) {
+    return c.json({
+      error: error.message,
+      stack: error.stack,
+    }, 500);
+  }
+});
+
+/**
  * POST /api/scan - File upload and scanning endpoint
  * Accepts code files and returns vulnerability analysis using AI
  */
@@ -437,6 +479,12 @@ app.post('/api/scan', async (c) => {
   try {
     // Get environment bindings from context
     const { env } = c.env;
+
+    // Debug logging for environment
+    console.log('[Scan] Environment check:');
+    console.log('[Scan]   c.env keys:', Object.keys(c.env));
+    console.log('[Scan]   env exists:', !!env);
+    console.log('[Scan]   env.AI exists:', !!env?.AI);
 
     // Parse the multipart form data
     const formData = await c.req.formData();

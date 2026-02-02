@@ -1,4 +1,4 @@
-# Testing Guide for AI Vulnerability Scanner
+ # Testing Guide for AI Vulnerability Scanner
 
 This document explains how to test the SQL Injection vulnerability scanner.
 
