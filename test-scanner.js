@@ -151,7 +151,7 @@ async function runAllTests() {
   console.log(`${colors.bright}${colors.cyan}`);
   console.log('╔══════════════════════════════════════════════════════════════════╗');
   console.log('║        AI Vulnerability Scanner - Test Suite                     ║');
-  console.log('║        (SQL Injection + XSS Detection)                           ║');
+  console.log('║        (SQL Injection + XSS + Credentials Detection)             ║');
   console.log('╚══════════════════════════════════════════════════════════════════╝');
   console.log(`${colors.reset}`);
 
@@ -207,6 +207,25 @@ async function runAllTests() {
       description: 'Safe JavaScript code with proper escaping',
       expectedVulnerabilities: 0,
       type: 'XSS',
+    },
+    // Hardcoded Credentials tests
+    {
+      file: 'vulnerable-credentials.py',
+      description: 'Python hardcoded credentials vulnerabilities',
+      expectedVulnerabilities: 6,
+      type: 'Credentials',
+    },
+    {
+      file: 'vulnerable-credentials.js',
+      description: 'JavaScript hardcoded credentials vulnerabilities',
+      expectedVulnerabilities: 8,
+      type: 'Credentials',
+    },
+    {
+      file: 'safe-credentials.py',
+      description: 'Safe Python code using environment variables',
+      expectedVulnerabilities: 0,
+      type: 'Credentials',
     },
   ];
 

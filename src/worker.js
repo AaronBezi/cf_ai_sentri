@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { detectSQLInjection } from './agents/sql-injection-agent.js';
 import { detectXSS } from './agents/xss-agent.js';
+import { detectHardcodedCredentials } from './agents/credentials-agent.js';
 
 // Initialize Hono app
 const app = new Hono();
@@ -523,15 +524,16 @@ app.post('/api/scan', async (c) => {
     const code = await file.text();
     const language = detectLanguage(file.name);
 
-    // Run both vulnerability detection agents in parallel
-    console.log('[Scan] Running SQL Injection and XSS detection in parallel...');
-    const [sqlInjectionResults, xssResults] = await Promise.all([
+    // Run all vulnerability detection agents in parallel
+    console.log('[Scan] Running SQL Injection, XSS, and Credentials detection in parallel...');
+    const [sqlInjectionResults, xssResults, credentialsResults] = await Promise.all([
       detectSQLInjection(code, file.name, language, env.AI),
       detectXSS(code, file.name, language, env.AI),
+      detectHardcodedCredentials(code, file.name, language, env.AI),
     ]);
 
     // Combine results from all agents
-    const allResults = [...sqlInjectionResults, ...xssResults];
+    const allResults = [...sqlInjectionResults, ...xssResults, ...credentialsResults];
 
     // Format vulnerabilities for frontend display
     const vulnerabilities = formatVulnerabilitiesForFrontend(allResults);
@@ -542,8 +544,9 @@ app.post('/api/scan', async (c) => {
     // Count by vulnerability type
     const sqlCount = vulnerabilities.filter((v) => v.type.includes('SQL')).length;
     const xssCount = vulnerabilities.filter((v) => v.type.includes('XSS')).length;
+    const credentialsCount = vulnerabilities.filter((v) => v.type.includes('Credential')).length;
 
-    console.log(`[Scan] Total vulnerabilities: ${vulnerabilities.length} (SQL: ${sqlCount}, XSS: ${xssCount})`);
+    console.log(`[Scan] Total vulnerabilities: ${vulnerabilities.length} (SQL: ${sqlCount}, XSS: ${xssCount}, Credentials: ${credentialsCount})`);
 
     // Return scan results
     return c.json({
@@ -558,6 +561,7 @@ app.post('/api/scan', async (c) => {
         by_type: {
           sql_injection: sqlCount,
           xss: xssCount,
+          hardcoded_credentials: credentialsCount,
         },
         by_severity: {
           critical: vulnerabilities.filter((v) => v.severity === 'CRITICAL').length,
