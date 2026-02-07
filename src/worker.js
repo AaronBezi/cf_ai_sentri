@@ -15,6 +15,18 @@ import { detectHardcodedCredentials } from './agents/credentials-agent.js';
 const app = new Hono();
 
 // =============================================================================
+// Session & ID Helpers
+// =============================================================================
+
+function getSessionId(c) {
+  return c.req.header('X-Session-Id') || null;
+}
+
+function generateId() {
+  return crypto.randomUUID();
+}
+
+// =============================================================================
 // Configuration
 // =============================================================================
 
@@ -787,6 +799,157 @@ app.get('/', (c) => {
       .agent-badge { font-size: 10px; padding: 4px 10px; }
       .container { padding: 24px; }
       .loading-agents { flex-direction: column; align-items: center; gap: 8px; }
+      .history-panel { width: 280px; }
+    }
+
+    /* Chat panel */
+    .chat-panel {
+      margin-top: 24px;
+      border-top: 1px solid rgba(249,115,22,0.15);
+      padding-top: 20px;
+      display: none;
+    }
+    .chat-panel.visible { display: block; animation: fadeInUp 0.4s ease-out; }
+
+    .chat-messages {
+      max-height: 400px;
+      overflow-y: auto;
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .chat-msg {
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.6;
+      max-width: 85%;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .chat-msg.user {
+      background: rgba(249,115,22,0.1);
+      border: 1px solid rgba(249,115,22,0.2);
+      align-self: flex-end;
+      color: var(--orange-400);
+    }
+    .chat-msg.assistant {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.06);
+      align-self: flex-start;
+      color: var(--gray-400);
+    }
+    .chat-msg.typing {
+      opacity: 0.6;
+      animation: dotPulse 1.4s ease-in-out infinite;
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 10px;
+    }
+    .chat-input {
+      flex: 1;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(249,115,22,0.2);
+      border-radius: 10px;
+      padding: 12px 16px;
+      color: #e5e5e5;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.3s;
+    }
+    .chat-input:focus { border-color: var(--orange-500); }
+    .chat-input::placeholder { color: var(--gray-600); }
+
+    .chat-send-btn {
+      background: linear-gradient(135deg, var(--orange-600), var(--orange-500));
+      color: #000;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.3s;
+      white-space: nowrap;
+    }
+    .chat-send-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(249,115,22,0.3); }
+    .chat-send-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* History panel */
+    .history-toggle {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 100;
+      background: rgba(17,17,17,0.9);
+      border: 1px solid rgba(249,115,22,0.2);
+      border-radius: 10px;
+      padding: 10px 16px;
+      color: var(--orange-400);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: inherit;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s;
+    }
+    .history-toggle:hover {
+      border-color: var(--orange-500);
+      box-shadow: 0 0 20px rgba(249,115,22,0.15);
+    }
+
+    .history-panel {
+      position: fixed;
+      top: 0; right: -340px;
+      width: 340px; height: 100vh;
+      background: var(--black-800);
+      border-left: 1px solid rgba(249,115,22,0.15);
+      z-index: 99;
+      transition: right 0.3s ease;
+      padding: 60px 20px 20px;
+      overflow-y: auto;
+    }
+    .history-panel.open { right: 0; }
+
+    .history-item {
+      padding: 12px;
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .history-item:hover {
+      border-color: rgba(249,115,22,0.3);
+      background: rgba(249,115,22,0.03);
+    }
+    .history-item-name {
+      font-weight: 600;
+      color: var(--orange-400);
+      font-size: 13px;
+    }
+    .history-item-meta {
+      font-size: 11px;
+      color: var(--gray-500);
+      margin-top: 4px;
+    }
+    .history-close {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: none;
+      border: none;
+      color: var(--gray-400);
+      cursor: pointer;
+      font-size: 20px;
+      padding: 4px 8px;
     }
   </style>
 </head>
@@ -795,6 +958,13 @@ app.get('/', (c) => {
   <div class="glow-orb glow-orb-1"></div>
   <div class="glow-orb glow-orb-2"></div>
   <div class="glow-orb glow-orb-3"></div>
+
+  <button class="history-toggle" id="historyToggle">History</button>
+  <div class="history-panel" id="historyPanel">
+    <button class="history-close" id="historyClose">&times;</button>
+    <h3 style="color: var(--orange-400); margin-bottom: 16px; font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">Scan History</h3>
+    <div id="historyList"></div>
+  </div>
 
   <div class="page-wrapper">
     <div class="header">
@@ -856,6 +1026,20 @@ app.get('/', (c) => {
           <span class="results-title-line"></span>
         </div>
         <div id="vulnerabilityList"></div>
+
+        <div class="chat-panel" id="chatPanel">
+          <div class="results-title">
+            <span>Ask SENTRI</span>
+            <span class="results-title-line"></span>
+          </div>
+          <div class="chat-messages" id="chatMessages"></div>
+          <div class="chat-input-row">
+            <input type="text" class="chat-input" id="chatInput"
+                   placeholder="Ask about vulnerabilities, get fix details..."
+                   autocomplete="off">
+            <button class="chat-send-btn" id="chatSendBtn" disabled>Send</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -865,6 +1049,22 @@ app.get('/', (c) => {
   </div>
 
   <script>
+    // ===== Session Management =====
+    let sessionId = localStorage.getItem('sentri_session_id');
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+      localStorage.setItem('sentri_session_id', sessionId);
+    }
+
+    let currentScanId = null;
+
+    function apiFetch(url, options) {
+      options = options || {};
+      options.headers = Object.assign({ 'X-Session-Id': sessionId }, options.headers || {});
+      return fetch(url, options);
+    }
+
+    // ===== DOM Elements =====
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const selectedFile = document.getElementById('selectedFile');
@@ -878,9 +1078,18 @@ app.get('/', (c) => {
     const errorDiv = document.getElementById('error');
     const summary = document.getElementById('summary');
     const typeBreakdown = document.getElementById('typeBreakdown');
+    const chatPanel = document.getElementById('chatPanel');
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const chatSendBtn = document.getElementById('chatSendBtn');
+    const historyToggle = document.getElementById('historyToggle');
+    const historyPanel = document.getElementById('historyPanel');
+    const historyClose = document.getElementById('historyClose');
+    const historyList = document.getElementById('historyList');
 
     let currentFile = null;
 
+    // ===== File Upload =====
     dropZone.addEventListener('click', () => fileInput.click());
     dropZone.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -904,6 +1113,7 @@ app.get('/', (c) => {
       scanBtn.disabled = false;
       results.classList.remove('visible');
       errorDiv.classList.remove('visible');
+      chatPanel.classList.remove('visible');
     }
 
     function formatFileSize(bytes) {
@@ -912,22 +1122,28 @@ app.get('/', (c) => {
       return (bytes / 1048576).toFixed(1) + ' MB';
     }
 
+    // ===== Scan Submission =====
     uploadForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!currentFile) return;
       loading.classList.add('visible');
       results.classList.remove('visible');
       errorDiv.classList.remove('visible');
+      chatPanel.classList.remove('visible');
       scanBtn.disabled = true;
 
       const formData = new FormData();
       formData.append('file', currentFile);
 
       try {
-        const response = await fetch('/api/scan', { method: 'POST', body: formData });
+        const response = await apiFetch('/api/scan', { method: 'POST', body: formData });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Scan failed');
+        currentScanId = data.scanId;
         displayResults(data);
+        chatMessages.innerHTML = '';
+        chatPanel.classList.add('visible');
+        loadHistory();
       } catch (err) {
         errorDiv.textContent = err.message;
         errorDiv.classList.add('visible');
@@ -937,6 +1153,7 @@ app.get('/', (c) => {
       }
     });
 
+    // ===== Results Display =====
     function displayResults(data) {
       vulnerabilityList.innerHTML = '';
       summary.innerHTML = '';
@@ -959,7 +1176,6 @@ app.get('/', (c) => {
         const bySev = s.by_severity || {};
         const byType = s.by_type || {};
 
-        // Stats
         const stats = [
           { n: s.total || data.vulnerabilities.length, c: 'total', l: 'Total' },
           { n: bySev.critical || 0, c: 'critical', l: 'Critical' },
@@ -974,7 +1190,6 @@ app.get('/', (c) => {
             '</div>';
         });
 
-        // Type breakdown
         const types = [
           { label: 'SQL Injection', count: byType.sql_injection || 0 },
           { label: 'XSS', count: byType.xss || 0 },
@@ -988,7 +1203,6 @@ app.get('/', (c) => {
             '</div>';
         });
 
-        // Vulnerability cards
         data.vulnerabilities.forEach((vuln, i) => {
           const sev = vuln.severity.toLowerCase();
           const div = document.createElement('div');
@@ -1026,6 +1240,111 @@ app.get('/', (c) => {
       d.textContent = str || '';
       return d.innerHTML;
     }
+
+    // ===== Chat Functionality =====
+    chatInput.addEventListener('input', () => {
+      chatSendBtn.disabled = !chatInput.value.trim();
+    });
+
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !chatSendBtn.disabled) sendChat();
+    });
+
+    chatSendBtn.addEventListener('click', sendChat);
+
+    async function sendChat() {
+      const message = chatInput.value.trim();
+      if (!message || !currentScanId) return;
+
+      appendChatMsg('user', message);
+      chatInput.value = '';
+      chatSendBtn.disabled = true;
+
+      const typingDiv = appendChatMsg('assistant', 'Thinking...');
+      typingDiv.classList.add('typing');
+
+      try {
+        const res = await apiFetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scanId: currentScanId, message }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Chat failed');
+        typingDiv.remove();
+        appendChatMsg('assistant', data.response);
+      } catch (err) {
+        typingDiv.remove();
+        appendChatMsg('assistant', 'Error: ' + err.message);
+      }
+    }
+
+    function appendChatMsg(role, content) {
+      const div = document.createElement('div');
+      div.className = 'chat-msg ' + role;
+      div.textContent = content;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return div;
+    }
+
+    // ===== Scan History =====
+    historyToggle.addEventListener('click', () => {
+      historyPanel.classList.toggle('open');
+      if (historyPanel.classList.contains('open')) loadHistory();
+    });
+
+    historyClose.addEventListener('click', () => {
+      historyPanel.classList.remove('open');
+    });
+
+    async function loadHistory() {
+      try {
+        const res = await apiFetch('/api/scans');
+        const data = await res.json();
+        historyList.innerHTML = '';
+        if (!data.scans || data.scans.length === 0) {
+          historyList.innerHTML = '<p style="color: var(--gray-500); font-size: 12px;">No past scans yet</p>';
+          return;
+        }
+        data.scans.forEach(scan => {
+          const item = document.createElement('div');
+          item.className = 'history-item';
+          item.innerHTML =
+            '<div class="history-item-name">' + escHtml(scan.filename) + '</div>' +
+            '<div class="history-item-meta">' +
+              scan.vulnerabilityCount + ' vulnerabilities &bull; ' +
+              new Date(scan.timestamp).toLocaleString() +
+            '</div>';
+          item.addEventListener('click', () => loadPastScan(scan.scanId));
+          historyList.appendChild(item);
+        });
+      } catch (err) {
+        console.error('Failed to load history:', err);
+      }
+    }
+
+    async function loadPastScan(scanId) {
+      try {
+        const res = await apiFetch('/api/scans/' + scanId);
+        const data = await res.json();
+        if (data.scan) {
+          currentScanId = scanId;
+          displayResults(data.scan);
+          chatMessages.innerHTML = '';
+          if (data.chatHistory && data.chatHistory.length > 0) {
+            data.chatHistory.forEach(m => appendChatMsg(m.role, m.content));
+          }
+          chatPanel.classList.add('visible');
+          historyPanel.classList.remove('open');
+        }
+      } catch (err) {
+        console.error('Failed to load scan:', err);
+      }
+    }
+
+    // Load history on page load
+    loadHistory();
   </script>
 </body>
 </html>
@@ -1162,28 +1481,66 @@ app.post('/api/scan', async (c) => {
 
     console.log(`[Scan] Total vulnerabilities: ${vulnerabilities.length} (SQL: ${sqlCount}, XSS: ${xssCount}, Credentials: ${credentialsCount})`);
 
+    // Build scan result object
+    const scanId = generateId();
+    const sessionId = getSessionId(c);
+    const scanTimestamp = new Date().toISOString();
+    const summaryObj = {
+      total: vulnerabilities.length,
+      by_type: {
+        sql_injection: sqlCount,
+        xss: xssCount,
+        hardcoded_credentials: credentialsCount,
+      },
+      by_severity: {
+        critical: vulnerabilities.filter((v) => v.severity === 'CRITICAL').length,
+        high: vulnerabilities.filter((v) => v.severity === 'HIGH').length,
+        medium: vulnerabilities.filter((v) => v.severity === 'MEDIUM').length,
+        low: vulnerabilities.filter((v) => v.severity === 'LOW').length,
+      },
+    };
+
+    // Persist scan results to KV (non-blocking)
+    if (sessionId && env.SCAN_HISTORY) {
+      const scanRecord = {
+        scanId,
+        sessionId,
+        filename: file.name,
+        language,
+        code,
+        linesScanned: code.split('\n').length,
+        timestamp: scanTimestamp,
+        vulnerabilities,
+        summary: summaryObj,
+      };
+
+      const { ctx } = c.env;
+      ctx.waitUntil((async () => {
+        await env.SCAN_HISTORY.put('scan:' + scanId, JSON.stringify(scanRecord));
+        const existingScans = await env.SCAN_HISTORY.get('session:' + sessionId + ':scans', 'json') || [];
+        existingScans.unshift({
+          scanId,
+          filename: file.name,
+          language,
+          timestamp: scanTimestamp,
+          vulnerabilityCount: vulnerabilities.length,
+          summary: summaryObj,
+        });
+        if (existingScans.length > 50) existingScans.length = 50;
+        await env.SCAN_HISTORY.put('session:' + sessionId + ':scans', JSON.stringify(existingScans));
+      })());
+    }
+
     // Return scan results
     return c.json({
+      scanId,
       status: 'success',
       filename: file.name,
       language: language,
       lines_scanned: code.split('\n').length,
-      scan_timestamp: new Date().toISOString(),
+      scan_timestamp: scanTimestamp,
       vulnerabilities: vulnerabilities,
-      summary: {
-        total: vulnerabilities.length,
-        by_type: {
-          sql_injection: sqlCount,
-          xss: xssCount,
-          hardcoded_credentials: credentialsCount,
-        },
-        by_severity: {
-          critical: vulnerabilities.filter((v) => v.severity === 'CRITICAL').length,
-          high: vulnerabilities.filter((v) => v.severity === 'HIGH').length,
-          medium: vulnerabilities.filter((v) => v.severity === 'MEDIUM').length,
-          low: vulnerabilities.filter((v) => v.severity === 'LOW').length,
-        },
-      },
+      summary: summaryObj,
     });
   } catch (error) {
     console.error('Scan error:', error);
@@ -1192,6 +1549,125 @@ app.post('/api/scan', async (c) => {
       500
     );
   }
+});
+
+// =============================================================================
+// Chat & History Routes
+// =============================================================================
+
+const CHAT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+
+/**
+ * POST /api/chat - Chat with AI about scan results
+ * Requires X-Session-Id header and { scanId, message } body
+ */
+app.post('/api/chat', async (c) => {
+  try {
+    const { env } = c.env;
+    const sessionId = getSessionId(c);
+    if (!sessionId) {
+      return c.json({ error: 'X-Session-Id header required' }, 400);
+    }
+    if (!env.SCAN_HISTORY) {
+      return c.json({ error: 'Storage not configured' }, 500);
+    }
+
+    const body = await c.req.json();
+    const { scanId, message } = body;
+    if (!scanId || !message) {
+      return c.json({ error: 'scanId and message are required' }, 400);
+    }
+
+    // Retrieve the scan from KV
+    const scan = await env.SCAN_HISTORY.get('scan:' + scanId, 'json');
+    if (!scan || scan.sessionId !== sessionId) {
+      return c.json({ error: 'Scan not found' }, 404);
+    }
+
+    // Retrieve existing chat history
+    const chatKey = 'session:' + sessionId + ':chat:' + scanId;
+    const chatHistory = await env.SCAN_HISTORY.get(chatKey, 'json') || [];
+
+    // Truncate code to first 500 lines to fit context window
+    const truncatedCode = scan.code.split('\n').slice(0, 500).join('\n');
+
+    // Build multi-turn messages for AI
+    const systemPrompt = `You are SENTRI, an AI security assistant. The user previously scanned a ${scan.language} file named "${scan.filename}" and the following vulnerabilities were found:\n\n${JSON.stringify(scan.vulnerabilities, null, 2)}\n\nThe source code is:\n\`\`\`${scan.language}\n${truncatedCode}\n\`\`\`\n\nAnswer questions about these vulnerabilities, provide detailed fix suggestions, and help the user understand security concepts. Be specific and reference line numbers when relevant. Keep answers concise but thorough.`;
+
+    const aiMessages = [
+      { role: 'system', content: systemPrompt },
+      ...chatHistory.map(m => ({ role: m.role, content: m.content })),
+      { role: 'user', content: message },
+    ];
+
+    // Call Workers AI
+    const response = await env.AI.run(CHAT_MODEL, {
+      messages: aiMessages,
+      max_tokens: 4096,
+      temperature: 0.3,
+    });
+
+    const assistantMessage = response.response || response.result || '';
+
+    // Update chat history
+    const now = new Date().toISOString();
+    chatHistory.push({ role: 'user', content: message, timestamp: now });
+    chatHistory.push({ role: 'assistant', content: assistantMessage, timestamp: now });
+
+    // Keep chat history bounded (last 40 messages)
+    if (chatHistory.length > 40) {
+      chatHistory.splice(0, chatHistory.length - 40);
+    }
+
+    await env.SCAN_HISTORY.put(chatKey, JSON.stringify(chatHistory));
+
+    return c.json({
+      response: assistantMessage,
+      chatHistory,
+    });
+  } catch (error) {
+    console.error('Chat error:', error);
+    return c.json({ error: 'Chat failed. Please try again.' }, 500);
+  }
+});
+
+/**
+ * GET /api/scans - List scan history for the current session
+ */
+app.get('/api/scans', async (c) => {
+  const { env } = c.env;
+  const sessionId = getSessionId(c);
+  if (!sessionId || !env.SCAN_HISTORY) {
+    return c.json({ scans: [] });
+  }
+  const scans = await env.SCAN_HISTORY.get('session:' + sessionId + ':scans', 'json') || [];
+  return c.json({ scans });
+});
+
+/**
+ * GET /api/scans/:scanId - Get a specific past scan with chat history
+ */
+app.get('/api/scans/:scanId', async (c) => {
+  const { env } = c.env;
+  const sessionId = getSessionId(c);
+  const scanId = c.req.param('scanId');
+
+  if (!env.SCAN_HISTORY) {
+    return c.json({ error: 'Storage not configured' }, 500);
+  }
+
+  const scan = await env.SCAN_HISTORY.get('scan:' + scanId, 'json');
+  if (!scan || (sessionId && scan.sessionId !== sessionId)) {
+    return c.json({ error: 'Scan not found' }, 404);
+  }
+
+  const chatHistory = sessionId
+    ? (await env.SCAN_HISTORY.get('session:' + sessionId + ':chat:' + scanId, 'json') || [])
+    : [];
+
+  // Don't send full source code back in the list response
+  const { code, ...scanWithoutCode } = scan;
+  return c.json({ scan: scanWithoutCode, chatHistory });
 });
 
 // =============================================================================
